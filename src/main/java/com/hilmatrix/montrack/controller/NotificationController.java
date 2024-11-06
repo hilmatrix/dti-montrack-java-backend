@@ -10,21 +10,29 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
-@RequestMapping("/notifications")
+@RequestMapping("/api/v1")
 public class NotificationController {
 
     @Autowired
     private NotificationRepository notificationRepository;
 
-    @GetMapping
+    @GetMapping("/notifications")
     public ResponseEntity<List<Notification>> getAllNotifications() {
         List<Notification> notifications = notificationRepository.findAll();
         return new ResponseEntity<>(notifications, HttpStatus.OK);
     }
 
-    @PostMapping
+    @GetMapping("/notification/{id}")
+    public ResponseEntity<Notification> getNotificationById(@PathVariable Long id) {
+        Optional<Notification> notification = notificationRepository.findById(id);
+        return notification.map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/notifications")
     public ResponseEntity<Notification> createNotification(@RequestBody Notification notification) {
         notification.setCreatedAt(LocalDateTime.now());
         notification.setUpdatedAt(LocalDateTime.now());
@@ -32,7 +40,7 @@ public class NotificationController {
         return new ResponseEntity<>(createdNotification, HttpStatus.CREATED);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/notification/{id}")
     public ResponseEntity<Notification> updateNotification(
             @PathVariable Long id, @RequestBody Notification notificationDetails) {
         Notification notification = notificationRepository.findById(id)
@@ -47,7 +55,7 @@ public class NotificationController {
         return ResponseEntity.ok(updatedNotification);
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/notification/{id}")
     public ResponseEntity<Void> deleteNotification(@PathVariable Long id) {
         Notification notification = notificationRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found for this id :: " + id));

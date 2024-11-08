@@ -3,34 +3,58 @@ package com.hilmatrix.montrack.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.web.bind.annotation.*;
-import com.hilmatrix.montrack.request.SignupRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1")
 public class SignupController {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    private BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    @Autowired
+    private BCryptPasswordEncoder passwordEncoder;
 
-    @PostMapping("/signup")
-    public ResponseEntity<String> signup(@RequestBody SignupRequest signupRequest) {
-        // Check if password and password confirmation match
-        if (!signupRequest.getPassword().equals(signupRequest.getPasswordConfirmation())) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Passwords do not match.");
+    @PostMapping("/api/v1/signup")
+    public ResponseEntity<?> signup(@RequestBody Map<String, Object> signupData) {
+        try {
+            // Extract and validate input fields
+            String name = (String) signupData.get("name");
+            String email = (String) signupData.get("email");
+            String password = (String) signupData.get("password");
+
+            if (name == null || name.isEmpty() ||
+                    email == null || email.isEmpty() ||
+                    password == null || password.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body("All fields (name, email, password) are required.");
+            }
+
+            // Encode the password
+            String passwordHash = passwordEncoder.encode(password);
+
+            // Insert the new user into the database
+            String insertSql = "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)";
+            int rowsInserted = jdbcTemplate.update(insertSql, name, email, passwordHash);
+
+            if (rowsInserted > 0) {
+                return ResponseEntity.status(HttpStatus.CREATED).body("User signed up successfully");
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Failed to sign up user");
+            }
+
+        } catch (Exception e) {
+            // Handle potential database errors (e.g., duplicate email)
+            if (e.getMessage().contains("duplicate key")) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body("Email already exists");
+            }
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Error occurred while signing up user");
         }
-
-        // Hash the password
-        String hashedPassword = passwordEncoder.encode(signupRequest.getPassword());
-
-        // Insert new user into the database
-        String sql = "INSERT INTO users (email, password_hash, name, created_at, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)";
-        jdbcTemplate.update(sql, signupRequest.getEmail(), hashedPassword, signupRequest.getName());
-
-        return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully.");
     }
 }

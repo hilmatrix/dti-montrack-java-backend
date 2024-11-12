@@ -3,12 +3,14 @@ package com.hilmatrix.montrack.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import lombok.Data;
 import java.time.LocalDateTime;
 
 @Getter
 @Setter
 @Entity
 @Table(name = "pockets")
+@Data
 public class Pocket {
 
     @Id

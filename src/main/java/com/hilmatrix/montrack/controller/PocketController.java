@@ -1,10 +1,14 @@
 package com.hilmatrix.montrack.controller;
 
 import com.hilmatrix.montrack.model.Pocket;
+import com.hilmatrix.montrack.repository.NotificationRepository;
 import com.hilmatrix.montrack.repository.PocketRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -16,6 +20,26 @@ public class PocketController {
 
     @Autowired
     private PocketRepository pocketRepository;
+    private final JwtDecoder jwtDecoder;
+    private final JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    public PocketController(PocketRepository pocketRepository, JwtDecoder jwtDecoder, JdbcTemplate jdbcTemplate) {
+        this.pocketRepository = pocketRepository;
+        this.jwtDecoder = jwtDecoder;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    public String getEmailFromJwt(String authorizationHeader) {
+        String token = authorizationHeader.replace("Bearer ", "");
+        Jwt jwt = jwtDecoder.decode(token);
+        return jwt.getSubject();
+    }
+
+    public Long getUserIdFromJwt(String email) {
+        String sql = "SELECT id FROM users WHERE email = ?";
+        return jdbcTemplate.queryForObject(sql, new Object[]{email}, Long.class);
+    }
 
     @GetMapping("/pockets")
     public List<Pocket> getAllPockets() {

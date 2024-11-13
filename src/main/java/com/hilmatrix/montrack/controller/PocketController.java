@@ -1,7 +1,7 @@
 package com.hilmatrix.montrack.controller;
 
+import com.hilmatrix.montrack.exception.ResourceNotFoundException;
 import com.hilmatrix.montrack.model.Pocket;
-import com.hilmatrix.montrack.repository.NotificationRepository;
 import com.hilmatrix.montrack.repository.PocketRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -36,54 +36,77 @@ public class PocketController {
         return jwt.getSubject();
     }
 
-    public Long getUserIdFromJwt(String email) {
+    public Long getUserIdFromJwt(String authorizationHeader) {
+        String email = getEmailFromJwt(authorizationHeader);
         String sql = "SELECT id FROM users WHERE email = ?";
         return jdbcTemplate.queryForObject(sql, new Object[]{email}, Long.class);
     }
 
+    public Long getWalletIdFromJwt(String authorizationHeader) {
+        String email = getEmailFromJwt(authorizationHeader);
+
+        // First, find the user ID based on the email
+        String userSql = "SELECT id FROM users WHERE email = ?";
+        Long userId = jdbcTemplate.queryForObject(userSql, new Object[]{email}, Long.class);
+
+        // Then, find the active wallet ID for that user
+        String walletSql = "SELECT id FROM wallets WHERE user_id = ? AND is_active = true";
+        return jdbcTemplate.queryForObject(walletSql, new Object[]{userId}, Long.class);
+    }
+
     @GetMapping("/pockets")
-    public List<Pocket> getAllPockets() {
-        return pocketRepository.findAll();
+    public ResponseEntity<List<Pocket>> getAllPockets(@RequestHeader("Authorization") String authorizationHeader) {
+        Long userId = getUserIdFromJwt(authorizationHeader);
+        List<Pocket> pockets = pocketRepository.findByWalletId(getWalletIdFromJwt(authorizationHeader));
+        return new ResponseEntity<>(pockets, HttpStatus.OK);
     }
 
     @GetMapping("/pocket/{id}")
-    public ResponseEntity<Pocket> getPocketById(@PathVariable Integer id) {
-        Optional<Pocket> pocket = pocketRepository.findById(id);
+    public ResponseEntity<Pocket> getPocketById(@RequestHeader("Authorization") String authorizationHeader, @PathVariable Long id) {
+        Long userId = getUserIdFromJwt(authorizationHeader);
+
+        Optional<Pocket> pocket = pocketRepository.findByIdAndWalletId(id, getWalletIdFromJwt(authorizationHeader));
         return pocket.map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @PostMapping
-    public Pocket createPocket(@RequestBody Pocket pocket) {
-        return pocketRepository.save(pocket);
+    @PostMapping("/pockets")
+    public ResponseEntity<Pocket> createPocket(@RequestHeader("Authorization") String authorizationHeader, @RequestBody Pocket pocket) {
+        String email = getEmailFromJwt(authorizationHeader);
+        Long walletId = getWalletIdFromJwt(email);
+
+        pocket.setWalletId(walletId); // Ensure the new pocket is linked to the authenticated user
+        Pocket createdPocket = pocketRepository.save(pocket);
+        return new ResponseEntity<>(createdPocket, HttpStatus.CREATED);
     }
 
     @PutMapping("/pocket/{id}")
-    public ResponseEntity<Pocket> updatePocket(@PathVariable Integer id, @RequestBody Pocket pocketDetails) {
-        Optional<Pocket> optionalPocket = pocketRepository.findById(id);
+    public ResponseEntity<Pocket> updatePocket(
+            @RequestHeader("Authorization") String authorizationHeader,
+            @PathVariable Long id, @RequestBody Pocket pocketDetails) {
+        Long userId = getUserIdFromJwt(authorizationHeader);
 
-        if (optionalPocket.isPresent()) {
-            Pocket pocket = optionalPocket.get();
-            pocket.setWalletId(pocketDetails.getWalletId());
-            pocket.setName(pocketDetails.getName());
-            pocket.setDescription(pocketDetails.getDescription());
-            pocket.setEmoji(pocketDetails.getEmoji());
-            pocket.setAmountLimit(pocketDetails.getAmountLimit());
-            pocket.setUpdatedAt(pocketDetails.getUpdatedAt());
+        Pocket pocket = pocketRepository.findByIdAndWalletId(id, getWalletIdFromJwt(authorizationHeader))
+                .orElseThrow(() -> new ResourceNotFoundException("Pocket not found for this id :: " + id));
 
-            Pocket updatedPocket = pocketRepository.save(pocket);
-            return ResponseEntity.ok(updatedPocket);
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+        pocket.setWalletId(pocketDetails.getWalletId());
+        pocket.setName(pocketDetails.getName());
+        pocket.setDescription(pocketDetails.getDescription());
+        pocket.setEmoji(pocketDetails.getEmoji());
+        pocket.setAmountLimit(pocketDetails.getAmountLimit());
+        pocket.setUpdatedAt(pocketDetails.getUpdatedAt());
+
+        Pocket updatedPocket = pocketRepository.save(pocket);
+        return ResponseEntity.ok(updatedPocket);
     }
 
     @DeleteMapping("/pocket/{id}")
-    public ResponseEntity<Void> deletePocket(@PathVariable Integer id) {
-        if (pocketRepository.existsById(id)) {
-            pocketRepository.deleteById(id);
-            return ResponseEntity.noContent().build();
-        } else {
-            return ResponseEntity.notFound().build();
-        }
+    public ResponseEntity<Void> deletePocket(@RequestHeader("Authorization") String authorizationHeader, @PathVariable Long id) {
+        Long userId = getUserIdFromJwt(authorizationHeader);
+
+        Pocket pocket = pocketRepository.findByIdAndWalletId(id, getWalletIdFromJwt(authorizationHeader))
+                .orElseThrow(() -> new ResourceNotFoundException("Pocket not found for this id :: " + id));
+
+        pocketRepository.delete(pocket);
+        return ResponseEntity.noContent().build();
     }
 }

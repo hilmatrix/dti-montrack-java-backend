@@ -15,10 +15,10 @@ public class Pocket {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Integer id;
+    private Long id;
 
     @Column(name = "wallet_id")
-    private Integer walletId;
+    private Long walletId;
 
     private String name;
     private String description;
